@@ -1,0 +1,73 @@
+from flask import Flask, render_template, request, jsonify, send_file
+from werkzeug.utils import secure_filename
+import os
+import uuid
+from processor.main_pipeline import HolographicOverlayProcessor
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['OUTPUT_FOLDER'] = 'outputs'
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB
+
+ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/upload', methods=['POST'])
+def upload_video():
+    if 'video' not in request.files:
+        return jsonify({'error': 'No video file'}), 400
+    
+    file = request.files['video']
+    if file and allowed_file(file.filename):
+        video_id = str(uuid.uuid4())
+        filename = secure_filename(file.filename)
+        input_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{video_id}_{filename}")
+        file.save(input_path)
+        
+        # Get processing options
+        options = {
+            'processing_mode': request.form.get('processing_mode', 'david'),  # Default to DaviD mode
+            'depth_mode': request.form.get('depth_mode', 'fast'),
+            'intensity': float(request.form.get('intensity', 0.6)),
+            'use_gpu': request.form.get('use_gpu', 'true').lower() == 'true',
+            # DaviD-specific parameters
+            'david_normal_weight': float(request.form.get('david_normal_weight', 0.85)),
+            'david_blend_strength': float(request.form.get('david_blend_strength', 0.9)),
+            'david_depth_contribution': float(request.form.get('david_depth_contribution', 0.15))
+        }
+        
+        # Process video (in production, use Celery for async)
+        output_filename = f"{video_id}_hologram.mp4"
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        
+        processor = HolographicOverlayProcessor(options)
+        stats = processor.process_video(input_path, output_path)
+        
+        # Cleanup
+        os.remove(input_path)
+        
+        return jsonify({
+            'status': 'complete',
+            'output': output_filename,
+            'stats': stats
+        })
+    
+    return jsonify({'error': 'Invalid file'}), 400
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    return send_file(
+        os.path.join(app.config['OUTPUT_FOLDER'], filename),
+        as_attachment=True
+    )
+
+if __name__ == '__main__':
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
+    app.run(debug=True, port=5001)  # Use port 5001 to avoid AirPlay conflict

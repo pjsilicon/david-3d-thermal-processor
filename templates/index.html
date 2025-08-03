@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DAVID-Style Holographic Overlay</title>
+    <style>
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            background: #000;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            background: linear-gradient(90deg, #00a8ff, #0078ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+        
+        .upload-area {
+            border: 2px dashed #0078ff;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .upload-area:hover {
+            border-color: #00a8ff;
+            background: rgba(0, 120, 255, 0.1);
+        }
+        
+        .btn {
+            background: linear-gradient(90deg, #00a8ff, #0078ff);
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        
+        .options {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        select, input[type="range"] {
+            width: 100%;
+            margin: 10px 0;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #0078ff;
+            color: white;
+            border-radius: 5px;
+        }
+        
+        .progress {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            height: 30px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            background: linear-gradient(90deg, #00a8ff, #0078ff);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .result {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        video {
+            width: 100%;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>3D Surface Normal Visualizer</h1>
+        <p style="text-align: center; color: #888;">
+            Transform faces into 3D geometric models with UV mapping visualization
+        </p>
+        
+        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+            <p style="font-size: 24px;">📹</p>
+            <p>Click to upload video or drag & drop</p>
+            <input type="file" id="fileInput" accept="video/*" style="display: none;">
+        </div>
+        
+        <div class="options" id="options" style="display: none;">
+            <h3>Processing Options</h3>
+            
+            <label>Processing Mode:</label>
+            <select id="processingMode">
+                <option value="david" selected>🎨 DaviD 3D Thermal (Blue/Cyan Effect)</option>
+                <option value="3d_normal">🎯 3D Surface Normal (Geometric UV Map)</option>
+                <option value="hologram">🌈 Holographic Depth Overlay</option>
+            </select>
+            
+            <label>Model Quality:</label>
+            <select id="depthMode">
+                <option value="fast" selected>Fast (Optimized for M4)</option>
+                <option value="medium">Medium (Balanced)</option>
+                <option value="quality">Quality (Best Results)</option>
+            </select>
+            
+            <label style="margin-top: 15px;">
+                <input type="checkbox" id="useGpu" checked style="width: auto; margin-right: 10px;">
+                🚀 Use M4 GPU Acceleration (Recommended)
+            </label>
+            
+            <div id="intensityControl" style="display: none;">
+                <label>Overlay Intensity: <span id="intensityValue">60%</span></label>
+                <input type="range" id="intensity" min="0" max="100" value="60" 
+                       oninput="document.getElementById('intensityValue').textContent = this.value + '%'">
+            </div>
+            
+            <div id="davidControls" style="display: block;">
+                <h4 style="color: #00a8ff; margin-top: 20px;">🎨 DaviD Effect Controls</h4>
+                
+                <label>Thermal Effect (Blue/Cyan): <span id="normalWeightValue">85%</span></label>
+                <input type="range" id="normalWeight" min="0" max="100" value="85" 
+                       oninput="document.getElementById('normalWeightValue').textContent = this.value + '%'">
+                
+                <label>Effect Intensity: <span id="blendStrengthValue">90%</span></label>
+                <input type="range" id="blendStrength" min="0" max="100" value="90" 
+                       oninput="document.getElementById('blendStrengthValue').textContent = this.value + '%'">
+                
+                <label>Depth Contribution: <span id="depthContribValue">15%</span></label>
+                <input type="range" id="depthContrib" min="0" max="50" value="15" 
+                       oninput="document.getElementById('depthContribValue').textContent = this.value + '%'">
+                
+                <label>Face Focus (Precision): <span id="faceFocusValue">75%</span></label>
+                <input type="range" id="faceFocus" min="50" max="100" value="75" 
+                       oninput="document.getElementById('faceFocusValue').textContent = this.value + '%'">
+                
+                <p style="font-size: 12px; color: #888; margin-top: 10px;">
+                    💡 Higher thermal effect = more blue/cyan thermal look<br>
+                    💡 Higher intensity = stronger 3D overlay<br>
+                    💡 Higher depth = more geometric depth information<br>
+                    💡 Higher face focus = more precise targeting (face + upper body only)
+                </p>
+            </div>
+            
+            <button class="btn" onclick="processVideo()">Process Video</button>
+        </div>
+        
+        <div id="progress" style="display: none;">
+            <div id="progressText">Processing... 0%</div>
+            <div class="progress">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div style="text-align: center; margin-top: 10px;">
+                <span id="progressPercent">0%</span>
+            </div>
+        </div>
+        
+        <div id="result" style="display: none;" class="result">
+            <h3>✨ Processing Complete!</h3>
+            <video id="resultVideo" controls></video>
+            <button class="btn" id="downloadBtn">Download Video</button>
+            <div id="stats"></div>
+        </div>
+    </div>
+    
+    <script>
+        let selectedFile = null;
+        
+        // Show/hide controls based on processing mode
+        document.getElementById('processingMode').addEventListener('change', function(e) {
+            const intensityControl = document.getElementById('intensityControl');
+            const davidControls = document.getElementById('davidControls');
+            
+            // Hide all mode-specific controls first
+            intensityControl.style.display = 'none';
+            davidControls.style.display = 'none';
+            
+            // Show appropriate controls
+            if (e.target.value === 'hologram') {
+                intensityControl.style.display = 'block';
+            } else if (e.target.value === 'david') {
+                davidControls.style.display = 'block';
+            }
+        });
+        
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                selectedFile = e.target.files[0];
+                const fileSizeMB = (selectedFile.size / 1024 / 1024);
+                const estimatedTime = Math.max(1, Math.round(fileSizeMB * 0.5));
+                
+                document.getElementById('uploadArea').innerHTML = `
+                    <p style="font-size: 24px;">✅</p>
+                    <p>${selectedFile.name}</p>
+                    <p style="color: #888;">${fileSizeMB.toFixed(2)} MB</p>
+                    <p style="color: #00a8ff; font-size: 14px;">
+                        ⏱️ Estimated processing: ~${estimatedTime} minute${estimatedTime > 1 ? 's' : ''}
+                    </p>
+                `;
+                document.getElementById('options').style.display = 'block';
+            }
+        });
+        
+        // Drag and drop
+        document.getElementById('uploadArea').addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.style.borderColor = '#00a8ff';
+        });
+        
+        document.getElementById('uploadArea').addEventListener('drop', function(e) {
+            e.preventDefault();
+            if (e.dataTransfer.files.length > 0) {
+                selectedFile = e.dataTransfer.files[0];
+                document.getElementById('fileInput').files = e.dataTransfer.files;
+                document.getElementById('fileInput').dispatchEvent(new Event('change'));
+            }
+        });
+        
+        async function processVideo() {
+            if (!selectedFile) return;
+            
+            const formData = new FormData();
+            formData.append('video', selectedFile);
+            formData.append('processing_mode', document.getElementById('processingMode').value);
+            formData.append('depth_mode', document.getElementById('depthMode').value);
+            formData.append('intensity', document.getElementById('intensity').value / 100);
+            formData.append('use_gpu', document.getElementById('useGpu').checked);
+            
+            // Add DaviD-specific parameters
+            formData.append('david_normal_weight', document.getElementById('normalWeight').value / 100);
+            formData.append('david_blend_strength', document.getElementById('blendStrength').value / 100);
+            formData.append('david_depth_contribution', document.getElementById('depthContrib').value / 100);
+            formData.append('david_face_focus', document.getElementById('faceFocus').value / 100);
+            
+            // Calculate and show time estimate
+            const fileSizeMB = selectedFile.size / (1024 * 1024);
+            const estimatedMinutes = Math.max(1, Math.round(fileSizeMB * 0.5)); // Rough estimate: 0.5 min per MB
+            const processingMode = document.getElementById('processingMode').value;
+            
+            let modeDescription = "";
+            if (processingMode === 'david') {
+                modeDescription = "🎨 DaviD Thermal 3D";
+            } else if (processingMode === '3d_normal') {
+                modeDescription = "🎯 3D Surface Normal";
+            } else {
+                modeDescription = "🌈 Holographic";
+            }
+            
+            document.getElementById('progressText').innerHTML = `
+                Processing ${modeDescription} effect...<br>
+                <small>Estimated time: ~${estimatedMinutes} minute${estimatedMinutes > 1 ? 's' : ''} 
+                (${fileSizeMB.toFixed(1)} MB video)</small>
+            `;
+            
+            document.getElementById('options').style.display = 'none';
+            document.getElementById('progress').style.display = 'block';
+            
+            // Simulate progress (in production, use WebSocket or polling)
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 10;
+                if (progress > 90) progress = 90;
+                updateProgress(progress);
+            }, 1000);
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                clearInterval(progressInterval);
+                updateProgress(100);
+                
+                if (data.status === 'complete') {
+                    showResult(data.output, data.stats);
+                }
+            } catch (error) {
+                alert('Error processing video: ' + error.message);
+                clearInterval(progressInterval);
+            }
+        }
+        
+        function updateProgress(percent) {
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressPercent').textContent = Math.round(percent) + '%';
+        }
+        
+        function showResult(filename, stats) {
+            document.getElementById('progress').style.display = 'none';
+            document.getElementById('result').style.display = 'block';
+            
+            document.getElementById('resultVideo').src = `/download/${filename}`;
+            document.getElementById('downloadBtn').onclick = () => {
+                window.location.href = `/download/${filename}`;
+            };
+            
+            let statsHtml = `
+                <p>Processed ${stats.frames_processed} frames in ${stats.processing_time.toFixed(1)}s</p>
+                <p>Overall FPS: ${stats.average_fps.toFixed(1)}</p>
+            `;
+            
+            // Show appropriate processing stats
+            if (stats.david_model_type) {
+                statsHtml += `
+                    <p>🎨 DaviD: ${stats.david_model_type} (Thermal 3D Mapping)</p>
+                `;
+                if (stats.david_features) {
+                    statsHtml += `<p>Features: ${stats.david_features.join(', ')}</p>`;
+                }
+            } else if (stats.normal_device) {
+                statsHtml += `
+                    <p>🎯 3D Normals: ${stats.normal_device} (${stats.normal_model_mode || 'surface-normal'})</p>
+                `;
+                if (stats.normal_average_fps) {
+                    statsHtml += `<p>Normal FPS: ${stats.normal_average_fps.toFixed(1)}</p>`;
+                }
+            } else if (stats.depth_device) {
+                statsHtml += `
+                    <p>🌈 Depth: ${stats.depth_device} (${stats.depth_model_mode || 'geometric'})</p>
+                `;
+                if (stats.depth_average_fps) {
+                    statsHtml += `<p>Depth FPS: ${stats.depth_average_fps.toFixed(1)}</p>`;
+                }
+            }
+            
+            document.getElementById('stats').innerHTML = statsHtml;
+        }
+    </script>
+</body>
+</html>

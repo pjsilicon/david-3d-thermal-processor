@@ -1,0 +1,8 @@
+opencv-python
+numpy
+flask
+ffmpeg-python
+scipy
+scikit-image
+tqdm
+pillow
