@@ -11,23 +11,12 @@ from .face_tracker import FaceBodyTracker
 from .depth_estimator import DepthEstimator
 from .depth_hologram_generator import DepthHologramGenerator
 from .surface_normal_estimator import SurfaceNormalEstimator, SurfaceNormalRenderer
-try:
-    from .enhanced_surface_normal_estimator import EnhancedSurfaceNormalEstimator
-    ENHANCED_AVAILABLE = True
-except ImportError:
-    ENHANCED_AVAILABLE = False
+# Import all processors - GPU acceleration is required
+from .enhanced_surface_normal_estimator import EnhancedSurfaceNormalEstimator
+from .deca_face_processor import DECAFaceProcessor, DECARenderer
 
-try:
-    from .deca_face_processor import DECAFaceProcessor, DECARenderer
-    DECA_AVAILABLE = True
-except ImportError:
-    DECA_AVAILABLE = False
-
-try:
-    from .david_processor import DaviDProcessor
-    DAVID_AVAILABLE = True
-except ImportError:
-    DAVID_AVAILABLE = False
+# DaviD processor is required for GPU acceleration
+from .david_processor import DaviDProcessor
 
 class HolographicOverlayProcessor:
     def __init__(self, config: dict):
@@ -39,9 +28,9 @@ class HolographicOverlayProcessor:
         depth_mode = config.get('depth_mode', 'fast')  # fast/medium/quality
         use_gpu = config.get('use_gpu', True)  # Enable GPU acceleration by default
         
-        if processing_mode == 'david' and DAVID_AVAILABLE:
-            print("🎨 Using DaviD-style UV Face Mapping")
-            # Make sure to provide the correct path to the multitask model
+        # All modes use GPU acceleration - no CPU fallbacks
+        if processing_mode == 'david':
+            print("🎨 Using DaviD 3D Thermal (GPU Accelerated)")
             self.david_processor = DaviDProcessor(multitask_model_path='DaviD/models/david/multitask-vitl16_384.onnx')
             
             # Configure DaviD effect parameters from UI
@@ -51,28 +40,21 @@ class HolographicOverlayProcessor:
             face_focus = config.get('david_face_focus', 0.75)
             self.david_processor.configure_effect(normal_weight, blend_strength, depth_contribution, face_focus)
             
-            self.use_surface_normals = False  # DaviD handles its own processing
+            self.use_surface_normals = False
             self.use_david = True
+            
         elif processing_mode == '3d_normal':
-            print("🎯 Using 3D Surface Normal Mode")
-            # Prefer DECA-style UV mapping over other methods
-            if DECA_AVAILABLE:
-                print("🎨 Using DECA-style UV Face Mapping")
-                self.surface_normal_estimator = DECAFaceProcessor(mode=depth_mode)
-                self.surface_normal_renderer = DECARenderer()
-            elif ENHANCED_AVAILABLE:
-                print("✨ Using Enhanced Surface Normal Estimator")
-                self.surface_normal_estimator = EnhancedSurfaceNormalEstimator(mode=depth_mode)
-                self.surface_normal_renderer = SurfaceNormalRenderer()
-            else:
-                print("📊 Using Basic Surface Normal Estimator")
-                self.surface_normal_estimator = SurfaceNormalEstimator(mode=depth_mode)
-                self.surface_normal_renderer = SurfaceNormalRenderer()
+            print("🎯 Using 3D Surface Normal (GPU Accelerated)")
+            # Use DECA for high-quality GPU-accelerated face processing
+            self.surface_normal_estimator = DECAFaceProcessor(mode=depth_mode)
+            self.surface_normal_renderer = DECARenderer()
             self.use_surface_normals = True
             self.use_david = False
-        else:
-            print("🌈 Using Holographic Overlay Mode")
-            self.depth_estimator = DepthEstimator(mode=depth_mode, use_gpu=use_gpu)
+            
+        else:  # holographic mode
+            print("🌈 Using Holographic Depth Overlay (GPU Accelerated)")
+            # Force GPU usage - no CPU fallback
+            self.depth_estimator = DepthEstimator(mode=depth_mode, use_gpu=True)
             self.hologram_generator = DepthHologramGenerator()
             self.use_surface_normals = False
             self.use_david = False
@@ -95,9 +77,10 @@ class HolographicOverlayProcessor:
             'tracking_loss_frames': 0
         }
         
-        # Initialize video handler
+        # Initialize video handler with quality settings
+        video_quality = self.config.get('video_quality', 'high')  # draft/high/cinema
         video = VideoHandler(input_path, output_path)
-        writer = video.create_writer()
+        writer = video.create_writer(quality=video_quality)
         
         # Extract audio for later
         audio_path = video.extract_audio()
@@ -201,31 +184,47 @@ class HolographicOverlayProcessor:
                 pbar.update(1)
                 current_progress = (frame_idx + 1) / video.total_frames
                 
-                # Write to progress file if provided
-                if progress_file and frame_idx % 10 == 0:  # Update every 10 frames
+                # Calculate progress data
+                progress_data = {
+                    'progress': current_progress,
+                    'current_frame': frame_idx + 1,
+                    'total_frames': video.total_frames,
+                    'fps': stats['frames_processed'] / (time.time() - start_time) if stats['frames_processed'] > 0 else 0,
+                    'eta_seconds': int((video.total_frames - frame_idx - 1) / max(0.1, stats['frames_processed'] / (time.time() - start_time))) if stats['frames_processed'] > 0 else 0
+                }
+                
+                # Call progress callback with full data (every 5 frames to avoid overwhelming)
+                if progress_callback and frame_idx % 5 == 0:
+                    progress_callback(progress_data)
+                
+                # Legacy progress file support (will be removed later)
+                if progress_file and frame_idx % 10 == 0:
                     try:
                         with open(progress_file, 'w') as f:
-                            progress_data = {
-                                'progress': current_progress,
-                                'current_frame': frame_idx + 1,
-                                'total_frames': video.total_frames,
-                                'fps': stats['frames_processed'] / (time.time() - start_time) if stats['frames_processed'] > 0 else 0,
-                                'eta_seconds': int((video.total_frames - frame_idx - 1) / max(0.1, stats['frames_processed'] / (time.time() - start_time))) if stats['frames_processed'] > 0 else 0
-                            }
                             f.write(json.dumps(progress_data))
                     except Exception as e:
                         print(f"Failed to write progress: {e}")
-                
-                if progress_callback:
-                    progress_callback(current_progress)
         
         # Cleanup
         video.cap.release()
         writer.release()
         
+        # Validate output video was created successfully
+        is_valid, validation_message = video.validate_output()
+        if not is_valid:
+            raise Exception(f"Video validation failed: {validation_message}")
+        
+        print(f"✅ {validation_message}")
+        
         # Remux with audio
         if audio_path and os.path.exists(audio_path):
+            print("🎵 Adding audio track...")
             video.remux_with_audio(output_path, audio_path)
+            
+            # Validate again after audio remux
+            is_valid, validation_message = video.validate_output()
+            if not is_valid:
+                raise Exception(f"Video validation failed after audio remux: {validation_message}")
         
         # Calculate stats
         stats['processing_time'] = time.time() - start_time

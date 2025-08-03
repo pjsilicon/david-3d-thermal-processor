@@ -97,54 +97,78 @@ class DaviDProcessor:
                     # Use DaviD's mask directly - it's trained on humans and works great!
                     face_mask = foreground_mask.copy()
                     
-                    # Optional: Apply face_focus as mask boundary adjustment (not blending)
-                    if self.face_focus < 0.9:  # Only modify if user wants looser boundaries
-                        # Convert to float for morphological operations
+                    # Optional: Apply face_focus as smooth boundary adjustment
+                    if self.face_focus < 0.95:  # Only modify if user wants boundary adjustment
+                        # Keep mask in float32 for quality preservation
                         if face_mask.dtype == np.uint8:
                             mask_float = face_mask.astype(np.float32) / 255.0
                         else:
                             mask_float = face_mask.astype(np.float32)
                         
-                        # Apply slight erosion for tighter mask at high face_focus values
-                        # or dilation for more generous coverage at low values
+                        # Use high-quality Gaussian-based boundary adjustment instead of morphological ops
                         if self.face_focus > 0.5:
-                            # Erode slightly for tighter fit
-                            kernel_size = int(3 + (self.face_focus - 0.5) * 4)  # 3-5 pixels
-                            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-                            mask_float = cv2.erode(mask_float, kernel, iterations=1)
+                            # Tighter boundaries: apply slight inward gradient
+                            blur_radius = int(2 + (self.face_focus - 0.5) * 6)  # 2-5 pixels
+                            mask_blur = cv2.GaussianBlur(mask_float, (blur_radius*2+1, blur_radius*2+1), blur_radius/3)
+                            # Create inward gradient by mixing original with blurred
+                            mask_float = mask_float * 0.7 + mask_blur * 0.3
+                            mask_float = np.power(mask_float, 1.2)  # Slight contrast boost for tighter edges
                         else:
-                            # Dilate slightly for more coverage
-                            kernel_size = int(3 + (0.5 - self.face_focus) * 4)  # 3-5 pixels
-                            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-                            mask_float = cv2.dilate(mask_float, kernel, iterations=1)
+                            # More generous coverage: expand boundaries smoothly
+                            blur_radius = int(2 + (0.5 - self.face_focus) * 6)  # 2-5 pixels
+                            mask_blur = cv2.GaussianBlur(mask_float, (blur_radius*2+1, blur_radius*2+1), blur_radius/3)
+                            # Expand by mixing with blurred version
+                            mask_float = np.maximum(mask_float, mask_blur * 0.8)
                         
-                        face_mask = (mask_float * 255).astype(np.uint8)
-                        print(f"✨ Using DaviD segmentation with boundary adjustment (focus={self.face_focus:.2f})")
+                        # Keep as float32 - no conversion back to uint8 yet
+                        face_mask = np.clip(mask_float, 0, 1)
+                        print(f"✨ Using DaviD segmentation with smooth boundary adjustment (focus={self.face_focus:.2f})")
                     else:
+                        # Convert to float32 for consistency
+                        if face_mask.dtype == np.uint8:
+                            face_mask = face_mask.astype(np.float32) / 255.0
                         print(f"✨ Using DaviD's high-quality foreground segmentation directly")
                         
                 elif mask is not None:
                     # Fallback to face tracking mask if DaviD segmentation unavailable
-                    face_mask = mask
+                    if mask.dtype == np.uint8:
+                        face_mask = mask.astype(np.float32) / 255.0
+                    else:
+                        face_mask = mask.astype(np.float32)
                     print(f"⚠️ DaviD foreground unavailable, using face tracking mask as fallback")
                 else:
                     # Last resort - apply to entire frame
-                    face_mask = np.ones((frame.shape[0], frame.shape[1]), dtype=np.uint8) * 255
+                    face_mask = np.ones((frame.shape[0], frame.shape[1]), dtype=np.float32)
                     print(f"❌ No mask available - applying to entire frame")
                 
-                # Normalize mask to 0-1 range
+                # Ensure mask is in 0-1 float32 range (should already be from above)
                 if face_mask.dtype == np.uint8:
                     mask_norm = face_mask.astype(np.float32) / 255.0
                 else:
-                    mask_norm = face_mask.astype(np.float32)
+                    mask_norm = np.clip(face_mask.astype(np.float32), 0, 1)
                 
                 # Create 3-channel mask
                 mask_3ch = np.stack([mask_norm] * 3, axis=-1)
                 
-                # Apply the thermal effect only where the face tracking mask indicates
+                # Apply the thermal effect with high-precision blending
                 blend_strength = self.blend_strength  # Use configured effect intensity
-                result = (combined_vis.astype(np.float32) * mask_3ch * blend_strength + 
-                         frame.astype(np.float32) * (1 - mask_3ch * blend_strength)).astype(np.uint8)
+                
+                # Keep everything in float32 for quality
+                frame_float = frame.astype(np.float32) / 255.0
+                combined_vis_float = combined_vis.astype(np.float32) / 255.0
+                
+                # Professional gamma-correct blending
+                gamma = 2.2
+                frame_linear = np.power(frame_float, gamma)
+                overlay_linear = np.power(combined_vis_float, gamma)
+                
+                # High-quality alpha blending in linear space
+                blend_mask = mask_3ch * blend_strength
+                blended_linear = frame_linear * (1 - blend_mask) + overlay_linear * blend_mask
+                
+                # Convert back to sRGB and clamp
+                result_float = np.power(np.clip(blended_linear, 0, 1), 1/gamma)
+                result = np.clip(result_float * 255.0, 0, 255).astype(np.uint8)
                     
                 # Track performance
                 processing_time = time.time() - start_time

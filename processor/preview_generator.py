@@ -2,44 +2,107 @@ import cv2
 import numpy as np
 import os
 from .video_handler import VideoHandler
-from .face_tracker import FaceBodyTracker
-from .david_processor import DaviDProcessor
+# Import the same processor as main pipeline for consistency
+from .main_pipeline import HolographicOverlayProcessor
 
 class PreviewGenerator:
     """
     Generates high-quality preview images to show what the full video processing will look like.
-    Perfect for checking mask accuracy and effect quality before committing to full processing.
+    Uses the same processing pipeline as main video processing for consistency.
     """
     
     def __init__(self, config):
         self.config = config
-        self.processing_mode = config.get('processing_mode', 'david')
+        # Use the same processor as main pipeline for consistency
+        self.processor = HolographicOverlayProcessor(config)
+    
+    def generate_preview_at_position(self, video_path, output_path, frame_position=0.5):
+        """
+        Generate a preview image at a specific position in the video.
+        Uses the same processing pipeline as main video processing for consistency.
         
-        # Initialize processors
-        self.face_tracker = FaceBodyTracker()
-        
-        if self.processing_mode == 'david':
-            # Initialize DaviD processor for high-quality preview
-            multitask_model_path = 'DaviD/models/david/multitask-vitl16_384.onnx'
-            if os.path.exists(multitask_model_path):
-                self.david_processor = DaviDProcessor(multitask_model_path)
-                
-                # Configure with user settings
-                normal_weight = config.get('david_normal_weight', 0.85)
-                blend_strength = config.get('david_blend_strength', 0.9)
-                depth_contribution = config.get('david_depth_contribution', 0.15)
-                face_focus = config.get('david_face_focus', 0.75)
-                
-                self.david_processor.configure_effect(
-                    normal_weight, blend_strength, depth_contribution, face_focus
-                )
+        Args:
+            video_path: Path to input video
+            output_path: Path where preview image will be saved
+            frame_position: Position in video (0.0 to 1.0)
+            
+        Returns:
+            bool: True if preview generated successfully
+        """
+        try:
+            print(f"🎭 Generating preview for {video_path} at position {frame_position}")
+            
+            # Use the same VideoHandler as main processing for consistency
+            video = VideoHandler(video_path, output_path)
+            
+            if video.total_frames == 0:
+                print("❌ Video has no frames")
+                return False
+            
+            print(f"📹 Video has {video.total_frames} frames")
+            
+            # Calculate target frame position
+            target_frame = int(video.total_frames * frame_position)
+            
+            # Seek to target frame
+            video.cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+            ret, frame = video.cap.read()
+            
+            if not ret or frame is None:
+                print(f"❌ Could not read frame at position {target_frame}")
+                video.cap.release()
+                return False
+            
+            print(f"📍 Processing frame {target_frame}")
+            
+            # Use the same tracking and processing as main pipeline
+            tracking_results = self.processor.tracker.process_frame(frame)
+            confidence = tracking_results.get('tracking_confidence', 0.0)
+            
+            print(f"📍 Face tracking confidence: {confidence:.2f}")
+            
+            # Process frame if we have face detection
+            processed_frame = frame
+            if tracking_results['combined_mask'] is not None:
+                if self.processor.use_david:
+                    processed_frame = self.processor.david_processor.process_frame(
+                        frame, tracking_results['combined_mask']
+                    )
+                    print("✅ Applied DaviD thermal effect")
+                elif self.processor.use_surface_normals:
+                    # Process with surface normals
+                    depth_map = self.processor.surface_normal_estimator.estimate_depth_and_normals(frame)
+                    processed_frame = self.processor.surface_normal_renderer.render(frame, depth_map, tracking_results['combined_mask'])
+                    print("✅ Applied surface normal effect")
+                else:
+                    # Process with holographic overlay
+                    depth_map = self.processor.depth_estimator.estimate_depth(frame)
+                    processed_frame = self.processor.hologram_generator.apply_holographic_overlay(
+                        frame, depth_map, tracking_results['combined_mask']
+                    )
+                    print("✅ Applied holographic overlay")
             else:
-                raise Exception("DaviD model not found")
+                print("⚠️ No face detected, using original frame")
+            
+            video.cap.release()
+            
+            # Save the processed frame as preview
+            success = cv2.imwrite(output_path, processed_frame)
+            if success:
+                print(f"✅ Preview saved to {output_path}")
+                return True
+            else:
+                print(f"❌ Failed to save preview to {output_path}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Preview generation failed: {str(e)}")
+            return False
     
     def generate_preview(self, video_path, output_path):
         """
-        Generate a preview image from the video showing the thermal effect.
-        Uses multiple frames and selects the best one for preview.
+        Generate a preview image from the middle of the video.
+        Uses the same processing pipeline as main video processing for consistency.
         
         Args:
             video_path: Path to input video
@@ -48,131 +111,4 @@ class PreviewGenerator:
         Returns:
             bool: True if preview generated successfully
         """
-        try:
-            print(f"🎭 Generating preview for {video_path}")
-            
-            # Use cv2.VideoCapture directly for preview (simpler than VideoHandler)
-            cap = cv2.VideoCapture(video_path)
-            if not cap.isOpened():
-                print("❌ Invalid video file")
-                return False
-            
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            if total_frames == 0:
-                print("❌ Video has no frames")
-                cap.release()
-                return False
-            
-            print(f"📹 Video has {total_frames} frames")
-            
-            # Select multiple frames for analysis (beginning, middle, 3/4 point)
-            frame_positions = [
-                int(total_frames * 0.1),   # 10% into video (skip intro)
-                int(total_frames * 0.4),   # 40% into video
-                int(total_frames * 0.6),   # 60% into video
-                int(total_frames * 0.8),   # 80% into video
-            ]
-            
-            best_frame = None
-            best_confidence = 0.0
-            best_processed = None
-            
-            print(f"🔍 Analyzing frames at positions: {frame_positions}")
-            
-            for frame_pos in frame_positions:
-                # Seek to specific frame
-                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_pos)
-                ret, frame = cap.read()
-                if not ret or frame is None:
-                    continue
-                    
-                # Get face tracking results
-                tracking_results = self.face_tracker.process_frame(frame)
-                confidence = tracking_results.get('tracking_confidence', 0.0)
-                
-                print(f"📍 Frame {frame_pos}: confidence {confidence:.2f}")
-                
-                # Process frame if we have good face detection
-                if confidence > 0.5 and confidence > best_confidence:
-                    if self.processing_mode == 'david':
-                        processed_frame = self.david_processor.process_frame(
-                            frame, tracking_results.get('combined_mask')
-                        )
-                        
-                        # Save both original and processed for comparison
-                        best_frame = frame
-                        best_processed = processed_frame
-                        best_confidence = confidence
-                        
-                        print(f"✨ New best frame found at position {frame_pos} (confidence: {confidence:.2f})")
-            
-            cap.release()
-            
-            if best_processed is not None:
-                # Create side-by-side comparison for preview
-                comparison = self._create_comparison_image(best_frame, best_processed)
-                
-                # Save preview
-                cv2.imwrite(output_path, comparison)
-                print(f"💾 Preview saved to {output_path}")
-                
-                return True
-            else:
-                print("❌ No suitable frame found for preview")
-                return False
-                
-        except Exception as e:
-            print(f"❌ Preview generation failed: {e}")
-            return False
-    
-    def _create_comparison_image(self, original, processed):
-        """
-        Create a side-by-side comparison image showing before/after effect.
-        
-        Args:
-            original: Original frame
-            processed: Processed frame with thermal effect
-            
-        Returns:
-            numpy.ndarray: Comparison image
-        """
-        h, w = original.shape[:2]
-        
-        # Resize if images are too large for preview
-        max_width = 800
-        if w > max_width:
-            scale = max_width / w
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            original = cv2.resize(original, (new_w, new_h))
-            processed = cv2.resize(processed, (new_w, new_h))
-            h, w = new_h, new_w
-        
-        # Create side-by-side comparison
-        comparison = np.zeros((h, w * 2 + 20, 3), dtype=np.uint8)
-        
-        # Add original frame on left
-        comparison[:, :w] = original
-        
-        # Add separator line
-        comparison[:, w:w+20] = (40, 40, 40)  # Dark gray separator
-        
-        # Add processed frame on right
-        comparison[:, w+20:] = processed
-        
-        # Add labels
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.7
-        thickness = 2
-        
-        # "Original" label
-        cv2.putText(comparison, "Original", (10, 30), font, font_scale, (255, 255, 255), thickness)
-        
-        # "DaviD Thermal Effect" label
-        cv2.putText(comparison, "DaviD Thermal 3D", (w + 30, 30), font, font_scale, (0, 168, 255), thickness)
-        
-        # Add confidence indicator
-        confidence_text = f"Face Detection: {self.face_tracker.tracking_confidence:.1%}"
-        cv2.putText(comparison, confidence_text, (10, h - 15), font, 0.5, (200, 200, 200), 1)
-        
-        return comparison
+        return self.generate_preview_at_position(video_path, output_path, 0.5)

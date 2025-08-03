@@ -1,300 +1,853 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>DAVID-Style Holographic Overlay</title>
+    <title>DaviD 3D Thermal Processor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Socket.IO for real-time updates -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    
     <style>
-        body {
-            font-family: -apple-system, system-ui, sans-serif;
-            background: #000;
-            color: #fff;
+        * {
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --primary: #0078ff;
+            --primary-light: #00a8ff;
+            --secondary: #1a1a2e;
+            --bg-dark: #0f0f14;
+            --bg-card: #1a1a2e;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --success: #4CAF50;
+            --error: #ff4444;
+            --border: #2a2a3e;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
         }
         
         .container {
-            max-width: 800px;
+            max-width: 960px;
             margin: 0 auto;
+            padding: 2rem;
         }
         
-        h1 {
-            background: linear-gradient(90deg, #00a8ff, #0078ff);
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-light), var(--primary));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            text-align: center;
+            margin-bottom: 0.5rem;
         }
         
+        .header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+        
+        /* Card Layout */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .card-header h2 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .card-header .badge {
+            margin-left: auto;
+            background: var(--primary);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+        }
+        
+        /* Upload Area */
         .upload-area {
-            border: 2px dashed #0078ff;
-            border-radius: 10px;
-            padding: 40px;
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 3rem;
             text-align: center;
-            margin: 20px 0;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
         }
         
         .upload-area:hover {
-            border-color: #00a8ff;
+            border-color: var(--primary);
+            background: rgba(0, 120, 255, 0.05);
+        }
+        
+        .upload-area.dragover {
+            border-color: var(--primary-light);
+            background: rgba(0, 168, 255, 0.1);
+        }
+        
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.8;
+        }
+        
+        .upload-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0%;
+            height: 4px;
+            background: var(--primary);
+            transition: width 0.3s ease;
+        }
+        
+        /* Preset System */
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .preset-card {
+            background: var(--bg-dark);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .preset-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        .preset-card.active {
+            border-color: var(--primary);
             background: rgba(0, 120, 255, 0.1);
         }
         
+        .preset-card h3 {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .preset-card p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        /* Control Groups */
+        .control-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        /* Sliders with Visual Feedback */
+        .slider-container {
+            position: relative;
+        }
+        
+        .slider-value {
+            position: absolute;
+            right: 0;
+            top: -1.5rem;
+            background: var(--primary);
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--border);
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+            margin: 1rem 0;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 10px rgba(0, 120, 255, 0.5);
+        }
+        
+        /* Visual Preview for Sliders */
+        .slider-preview {
+            height: 60px;
+            border-radius: 4px;
+            margin-top: 0.5rem;
+            background: linear-gradient(90deg, #1a1a2e 0%, #00a8ff 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .slider-preview.thermal {
+            background: linear-gradient(90deg, #1a1a2e 0%, #00ffff 50%, #ff00ff 100%);
+        }
+        
+        .slider-preview.focus {
+            background: radial-gradient(ellipse at center, rgba(0, 168, 255, 0.6) 0%, transparent 70%);
+        }
+        
+        /* Buttons */
         .btn {
-            background: linear-gradient(90deg, #00a8ff, #0078ff);
+            background: linear-gradient(135deg, var(--primary-light), var(--primary));
             border: none;
             color: white;
-            padding: 12px 30px;
-            border-radius: 5px;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 16px;
-            margin: 10px;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
         }
         
-        .options {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 20px;
-            border-radius: 10px;
-            margin: 20px 0;
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 120, 255, 0.3);
         }
         
-        select, input[type="range"] {
-            width: 100%;
-            margin: 10px 0;
-            padding: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid #0078ff;
-            color: white;
-            border-radius: 5px;
+        .btn:active {
+            transform: translateY(0);
         }
         
-        .progress {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 5px;
-            height: 30px;
+        .btn-secondary {
+            background: transparent;
+            border: 2px solid var(--border);
+            color: var(--text-primary);
+        }
+        
+        .btn-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: none;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        
+        /* Progress Section */
+        .progress-section {
+            display: none;
+        }
+        
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .progress-stats {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .progress-stat {
+            text-align: center;
+        }
+        
+        .progress-stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .progress-stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        .progress-bar-container {
+            background: var(--bg-dark);
+            border-radius: 8px;
+            height: 40px;
             overflow: hidden;
-            margin: 20px 0;
+            position: relative;
         }
         
         .progress-bar {
-            background: linear-gradient(90deg, #00a8ff, #0078ff);
             height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--primary-light));
             width: 0%;
-            transition: width 0.3s;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 1rem;
+            color: white;
+            font-weight: 500;
         }
         
-        .result {
-            text-align: center;
-            margin: 20px 0;
+        .progress-message {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--bg-dark);
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        /* Result Section */
+        .result-section {
+            display: none;
+        }
+        
+        .video-container {
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
         
         video {
             width: 100%;
-            border-radius: 10px;
-            margin: 20px 0;
+            display: block;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        
+        .stat-item {
+            background: var(--bg-dark);
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        /* Animations */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .processing {
+            animation: pulse 2s infinite;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .preset-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .btn-group {
+                flex-direction: column;
+            }
+            
+            .progress-stats {
+                flex-direction: column;
+                gap: 1rem;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>3D Surface Normal Visualizer</h1>
-        <p style="text-align: center; color: #888;">
-            Transform faces into 3D geometric models with UV mapping visualization
-        </p>
+        <header class="header">
+            <h1>DaviD 3D Thermal Processor</h1>
+            <p>Transform faces with Microsoft's advanced 3D thermal mapping technology</p>
+        </header>
         
-        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-            <p style="font-size: 24px;">📹</p>
-            <p>Click to upload video or drag & drop</p>
-            <input type="file" id="fileInput" accept="video/*" style="display: none;">
-        </div>
-        
-        <div class="options" id="options" style="display: none;">
-            <h3>Processing Options</h3>
-            
-            <label>Processing Mode:</label>
-            <select id="processingMode">
-                <option value="david" selected>🎨 DaviD 3D Thermal (Blue/Cyan Effect)</option>
-                <option value="3d_normal">🎯 3D Surface Normal (Geometric UV Map)</option>
-                <option value="hologram">🌈 Holographic Depth Overlay</option>
-            </select>
-            
-            <label>Model Quality:</label>
-            <select id="depthMode">
-                <option value="fast" selected>Fast (Optimized for M4)</option>
-                <option value="medium">Medium (Balanced)</option>
-                <option value="quality">Quality (Best Results)</option>
-            </select>
-            
-            <label style="margin-top: 15px;">
-                <input type="checkbox" id="useGpu" checked style="width: auto; margin-right: 10px;">
-                🚀 Use M4 GPU Acceleration (Recommended)
-            </label>
-            
-            <div id="intensityControl" style="display: none;">
-                <label>Overlay Intensity: <span id="intensityValue">60%</span></label>
-                <input type="range" id="intensity" min="0" max="100" value="60" 
-                       oninput="document.getElementById('intensityValue').textContent = this.value + '%'">
+        <!-- Upload Section -->
+        <div class="card" id="uploadSection">
+            <div class="card-header">
+                <h2>📹 Upload Video</h2>
+                <span class="badge">GPU Accelerated</span>
             </div>
             
-            <div id="davidControls" style="display: block;">
-                <h4 style="color: #00a8ff; margin-top: 20px;">🎨 DaviD Effect Controls</h4>
-                
-                <label>Thermal Effect (Blue/Cyan): <span id="normalWeightValue">85%</span></label>
-                <input type="range" id="normalWeight" min="0" max="100" value="85" 
-                       oninput="document.getElementById('normalWeightValue').textContent = this.value + '%'">
-                
-                <label>Effect Intensity: <span id="blendStrengthValue">90%</span></label>
-                <input type="range" id="blendStrength" min="0" max="100" value="90" 
-                       oninput="document.getElementById('blendStrengthValue').textContent = this.value + '%'">
-                
-                <label>Depth Contribution: <span id="depthContribValue">15%</span></label>
-                <input type="range" id="depthContrib" min="0" max="50" value="15" 
-                       oninput="document.getElementById('depthContribValue').textContent = this.value + '%'">
-                
-                <label>Face Focus (Precision): <span id="faceFocusValue">75%</span></label>
-                <input type="range" id="faceFocus" min="0" max="100" value="75" 
-                       oninput="document.getElementById('faceFocusValue').textContent = this.value + '%'">
-                
-                <p style="font-size: 12px; color: #888; margin-top: 10px;">
-                    💡 Higher thermal effect = more blue/cyan thermal look<br>
-                    💡 Higher intensity = stronger 3D overlay<br>
-                    💡 Higher depth = more geometric depth information<br>
-                    💡 Face focus: 0% = generous coverage, 50% = default, 100% = tighter fit
+            <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">🎬</div>
+                <h3>Drop your video here or click to browse</h3>
+                <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+                    Supported formats: MP4, AVI, MOV, MKV (max 500MB)
+                </p>
+                <input type="file" id="fileInput" accept="video/*" style="display: none;">
+                <div class="upload-progress" id="uploadProgress"></div>
+            </div>
+        </div>
+        
+        <!-- Settings Section -->
+        <div class="card" id="settingsSection" style="display: none;">
+            <div class="card-header">
+                <h2>⚙️ Processing Settings</h2>
+            </div>
+            
+            <!-- Preset System -->
+            <div class="control-group">
+                <label>Quick Presets</label>
+                <div class="preset-grid">
+                    <div class="preset-card" data-preset="marketing" onclick="selectPreset('marketing')">
+                        <h3>📊 Marketing Material</h3>
+                        <p>Cinema quality, professional look</p>
+                    </div>
+                    <div class="preset-card" data-preset="social" onclick="selectPreset('social')">
+                        <h3>📱 Social Media</h3>
+                        <p>High quality, vibrant effects</p>
+                    </div>
+                    <div class="preset-card" data-preset="quick" onclick="selectPreset('quick')">
+                        <h3>⚡ Quick Test</h3>
+                        <p>Fast processing, preview quality</p>
+                    </div>
+                    <div class="preset-card active" data-preset="custom" onclick="selectPreset('custom')">
+                        <h3>🎨 Custom</h3>
+                        <p>Fine-tune all parameters</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Effect Controls -->
+            <div class="control-group">
+                <label>Thermal Effect Intensity</label>
+                <div class="slider-container">
+                    <span class="slider-value" id="thermalValue">85%</span>
+                    <input type="range" id="normalWeight" min="0" max="100" value="85">
+                    <div class="slider-preview thermal" id="thermalPreview"></div>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                    Controls the blue/cyan thermal mapping effect strength
                 </p>
             </div>
             
-            <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button class="btn" onclick="generatePreview()" style="background: #ff6b35;">🎭 Generate Preview</button>
-                <button class="btn" onclick="processVideo()">🎬 Process Full Video</button>
+            <div class="control-group">
+                <label>Overall Intensity</label>
+                <div class="slider-container">
+                    <span class="slider-value" id="intensityValue">90%</span>
+                    <input type="range" id="blendStrength" min="0" max="100" value="90">
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label>Face Focus</label>
+                <div class="slider-container">
+                    <span class="slider-value" id="focusValue">75%</span>
+                    <input type="range" id="faceFocus" min="0" max="100" value="75">
+                    <div class="slider-preview focus" id="focusPreview"></div>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                    0% = Full body coverage | 100% = Tight face focus
+                </p>
+            </div>
+            
+            <div class="control-group">
+                <label>Video Quality</label>
+                <select id="videoQuality" style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary);">
+                    <option value="draft">⚡ Draft - Fast encoding (smallest file)</option>
+                    <option value="high" selected>📹 High - Best balance (recommended)</option>
+                    <option value="cinema">🎬 Cinema - Marketing quality (largest file)</option>
+                </select>
+            </div>
+            
+            <div class="control-group" id="frameSelectionGroup" style="display: none;">
+                <label>Preview Frame Position</label>
+                <div class="slider-container">
+                    <span class="slider-value" id="framePositionValue">50%</span>
+                    <input type="range" id="framePosition" min="0" max="100" value="50">
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;" id="frameInfo">
+                    Select which frame to use for preview
+                </p>
+            </div>
+            
+            <div class="btn-group">
+                <button class="btn" onclick="generatePreview()">
+                    🎭 Generate Preview
+                </button>
+                <button class="btn" onclick="processVideo()">
+                    🚀 Process Full Video
+                </button>
+                <button class="btn btn-secondary" onclick="saveSettings()">
+                    💾 Save Settings
+                </button>
             </div>
         </div>
         
-        <div id="progress" style="display: none;">
-            <div id="progressText">Processing... 0%</div>
-            <div class="progress">
-                <div class="progress-bar" id="progressBar"></div>
+        <!-- Preview Section -->
+        <div class="card" id="previewSection" style="display: none;">
+            <div class="card-header">
+                <h2>🎭 Preview</h2>
             </div>
-            <div style="text-align: center; margin-top: 10px;">
-                <span id="progressPercent">0%</span>
+            
+            <div id="previewLoading" style="text-align: center; padding: 2rem; display: none;">
+                <div class="processing" style="font-size: 2rem;">⚙️</div>
+                <p style="margin-top: 1rem;">Generating preview...</p>
+            </div>
+            
+            <div id="previewResult" style="display: none;">
+                <img id="previewImage" style="width: 100%; border-radius: 8px; margin-bottom: 1rem;">
+                <p style="text-align: center; color: var(--text-secondary);">
+                    Side-by-side comparison: Original (left) vs DaviD Thermal 3D (right)
+                </p>
+                <div class="btn-group" style="justify-content: center; margin-top: 1rem;">
+                    <button class="btn btn-secondary" onclick="downloadPreview()">
+                        ⬇️ Download Preview
+                    </button>
+                    <button class="btn btn-secondary" onclick="regeneratePreview()">
+                        🔄 Try Different Frame
+                    </button>
+                </div>
             </div>
         </div>
         
-        <div id="preview" style="display: none;" class="result">
-            <h3>🎭 Preview Generated</h3>
-            <p style="color: #888; margin-bottom: 15px;">This shows what your full video will look like with the current settings</p>
-            <img id="previewImage" style="max-width: 100%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-            <div style="margin-top: 15px;">
-                <button class="btn" onclick="processVideo()" style="background: #00a8ff;">✅ Looks Good - Process Full Video</button>
-                <button class="btn" onclick="hidePreview()" style="background: #666;">🔄 Adjust Settings</button>
+        <!-- Progress Section -->
+        <div class="card progress-section" id="progressSection">
+            <div class="card-header">
+                <h2 class="processing">🔄 Processing Video</h2>
             </div>
-            <div id="previewStats" style="margin-top: 10px; font-size: 12px; color: #888;"></div>
+            
+            <div class="progress-stats">
+                <div class="progress-stat">
+                    <div class="progress-stat-value" id="currentFrame">0</div>
+                    <div class="progress-stat-label">Current Frame</div>
+                </div>
+                <div class="progress-stat">
+                    <div class="progress-stat-value" id="totalFrames">0</div>
+                    <div class="progress-stat-label">Total Frames</div>
+                </div>
+                <div class="progress-stat">
+                    <div class="progress-stat-value" id="fps">0</div>
+                    <div class="progress-stat-label">Processing Speed</div>
+                </div>
+                <div class="progress-stat">
+                    <div class="progress-stat-value" id="elapsed">0:00</div>
+                    <div class="progress-stat-label">Time Elapsed</div>
+                </div>
+                <div class="progress-stat">
+                    <div class="progress-stat-value" id="eta">--:--</div>
+                    <div class="progress-stat-label">Time Remaining</div>
+                </div>
+            </div>
+            
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar">
+                    <span id="progressPercent">0%</span>
+                </div>
+            </div>
+            
+            <div class="progress-message" id="progressMessage">
+                Initializing DaviD 3D processor...
+            </div>
         </div>
         
-        <div id="result" style="display: none;" class="result">
-            <h3>✨ Processing Complete!</h3>
-            <video id="resultVideo" controls></video>
-            <button class="btn" id="downloadBtn">Download Video</button>
-            <div id="stats"></div>
+        <!-- Result Section -->
+        <div class="card result-section" id="resultSection">
+            <div class="card-header">
+                <h2>✨ Processing Complete</h2>
+            </div>
+            
+            <div class="video-container">
+                <video id="resultVideo" controls></video>
+            </div>
+            
+            <div class="btn-group">
+                <button class="btn" id="downloadBtn">
+                    ⬇️ Download Video
+                </button>
+                <button class="btn btn-secondary" onclick="processAnother()">
+                    🔄 Process Another
+                </button>
+            </div>
+            
+            <div class="stats-grid" id="statsGrid">
+                <!-- Stats will be populated here -->
+            </div>
         </div>
     </div>
     
     <script>
+        // WebSocket connection
+        let socket = null;
+        let currentVideoId = null;
         let selectedFile = null;
+        let currentPreset = 'custom';
+        let videoDuration = 0;
+        let totalFrames = 0;
+        let currentPreviewUrl = null;
         
-        // Show/hide controls based on processing mode
-        document.getElementById('processingMode').addEventListener('change', function(e) {
-            const intensityControl = document.getElementById('intensityControl');
-            const davidControls = document.getElementById('davidControls');
-            
-            // Hide all mode-specific controls first
-            intensityControl.style.display = 'none';
-            davidControls.style.display = 'none';
-            
-            // Show appropriate controls
-            if (e.target.value === 'hologram') {
-                intensityControl.style.display = 'block';
-            } else if (e.target.value === 'david') {
-                davidControls.style.display = 'block';
-            }
-        });
+        // Preset configurations
+        const presets = {
+            marketing: {
+                normalWeight: 75,
+                blendStrength: 85,
+                faceFocus: 75,
+                videoQuality: 'cinema'
+            },
+            social: {
+                normalWeight: 90,
+                blendStrength: 95,
+                faceFocus: 80,
+                videoQuality: 'high'
+            },
+            quick: {
+                normalWeight: 85,
+                blendStrength: 90,
+                faceFocus: 75,
+                videoQuality: 'draft'
+            },
+            custom: null
+        };
         
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            if (e.target.files.length > 0) {
-                selectedFile = e.target.files[0];
-                const fileSizeMB = (selectedFile.size / 1024 / 1024);
-                const estimatedTime = Math.max(1, Math.round(fileSizeMB * 1.2)); // More accurate: 1.2 min/MB for DaviD
-                
-                document.getElementById('uploadArea').innerHTML = `
-                    <p style="font-size: 24px;">✅</p>
-                    <p>${selectedFile.name}</p>
-                    <p style="color: #888;">${fileSizeMB.toFixed(2)} MB</p>
-                    <p style="color: #00a8ff; font-size: 14px;">
-                        ⏱️ Estimated processing: ~${estimatedTime} minute${estimatedTime > 1 ? 's' : ''}
-                    </p>
-                `;
-                document.getElementById('options').style.display = 'block';
-            }
-        });
+        // Initialize WebSocket
+        function initWebSocket() {
+            socket = io();
+            
+            socket.on('connect', () => {
+                console.log('Connected to server');
+            });
+            
+            socket.on('progress', (data) => {
+                updateProgress(data);
+            });
+            
+            socket.on('complete', (data) => {
+                handleComplete(data);
+            });
+            
+            socket.on('error', (data) => {
+                handleError(data);
+            });
+        }
+        
+        // File upload handling
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        
+        fileInput.addEventListener('change', handleFileSelect);
         
         // Drag and drop
-        document.getElementById('uploadArea').addEventListener('dragover', function(e) {
+        uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
-            this.style.borderColor = '#00a8ff';
+            uploadArea.classList.add('dragover');
         });
         
-        document.getElementById('uploadArea').addEventListener('drop', function(e) {
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
             if (e.dataTransfer.files.length > 0) {
-                selectedFile = e.dataTransfer.files[0];
-                document.getElementById('fileInput').files = e.dataTransfer.files;
-                document.getElementById('fileInput').dispatchEvent(new Event('change'));
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect({ target: { files: e.dataTransfer.files }});
             }
         });
         
+        function handleFileSelect(e) {
+            if (e.target.files.length > 0) {
+                selectedFile = e.target.files[0];
+                const fileSizeMB = (selectedFile.size / 1024 / 1024).toFixed(2);
+                
+                uploadArea.innerHTML = `
+                    <div class="upload-icon">✅</div>
+                    <h3>${selectedFile.name}</h3>
+                    <p style="color: var(--text-secondary);">
+                        ${fileSizeMB} MB • Ready to process
+                    </p>
+                `;
+                
+                document.getElementById('settingsSection').style.display = 'block';
+                document.getElementById('frameSelectionGroup').style.display = 'block';
+                
+                // Try to get video duration for frame info
+                getVideoDuration(selectedFile);
+                
+                // Smooth scroll to settings
+                document.getElementById('settingsSection').scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'nearest' 
+                });
+            }
+        }
+        
+        // Slider updates with visual feedback
+        const sliders = {
+            normalWeight: { 
+                element: document.getElementById('normalWeight'), 
+                value: document.getElementById('thermalValue'),
+                preview: document.getElementById('thermalPreview')
+            },
+            blendStrength: { 
+                element: document.getElementById('blendStrength'), 
+                value: document.getElementById('intensityValue')
+            },
+            faceFocus: { 
+                element: document.getElementById('faceFocus'), 
+                value: document.getElementById('focusValue'),
+                preview: document.getElementById('focusPreview')
+            }
+        };
+        
+        Object.entries(sliders).forEach(([name, slider]) => {
+            slider.element.addEventListener('input', (e) => {
+                const value = e.target.value;
+                slider.value.textContent = value + '%';
+                
+                // Update visual previews
+                if (slider.preview) {
+                    if (name === 'normalWeight') {
+                        slider.preview.style.opacity = value / 100;
+                    } else if (name === 'faceFocus') {
+                        const scale = 1 - (value / 200); // 0.5 to 1
+                        slider.preview.style.background = `radial-gradient(ellipse ${scale * 100}% ${scale * 100}% at center, rgba(0, 168, 255, 0.6) 0%, transparent 70%)`;
+                    }
+                }
+                
+                // Mark as custom if user changes values
+                if (currentPreset !== 'custom') {
+                    selectPreset('custom');
+                }
+            });
+        });
+        
+        // Preset selection
+        function selectPreset(presetName) {
+            currentPreset = presetName;
+            
+            // Update UI
+            document.querySelectorAll('.preset-card').forEach(card => {
+                card.classList.toggle('active', card.dataset.preset === presetName);
+            });
+            
+            // Apply preset values
+            if (presets[presetName]) {
+                const preset = presets[presetName];
+                
+                sliders.normalWeight.element.value = preset.normalWeight;
+                sliders.normalWeight.value.textContent = preset.normalWeight + '%';
+                
+                sliders.blendStrength.element.value = preset.blendStrength;
+                sliders.blendStrength.value.textContent = preset.blendStrength + '%';
+                
+                sliders.faceFocus.element.value = preset.faceFocus;
+                sliders.faceFocus.value.textContent = preset.faceFocus + '%';
+                
+                document.getElementById('videoQuality').value = preset.videoQuality;
+                
+                // Update previews
+                updateSliderPreviews();
+            }
+        }
+        
+        function updateSliderPreviews() {
+            const thermalValue = sliders.normalWeight.element.value;
+            const focusValue = sliders.faceFocus.element.value;
+            
+            if (sliders.normalWeight.preview) {
+                sliders.normalWeight.preview.style.opacity = thermalValue / 100;
+            }
+            
+            if (sliders.faceFocus.preview) {
+                const scale = 1 - (focusValue / 200);
+                sliders.faceFocus.preview.style.background = `radial-gradient(ellipse ${scale * 100}% ${scale * 100}% at center, rgba(0, 168, 255, 0.6) 0%, transparent 70%)`;
+            }
+        }
+        
+        // Process video
         async function processVideo() {
             if (!selectedFile) return;
             
             const formData = new FormData();
             formData.append('video', selectedFile);
-            formData.append('processing_mode', document.getElementById('processingMode').value);
-            formData.append('depth_mode', document.getElementById('depthMode').value);
-            formData.append('intensity', document.getElementById('intensity').value / 100);
-            formData.append('use_gpu', document.getElementById('useGpu').checked);
+            formData.append('processing_mode', 'david');
+            formData.append('depth_mode', 'fast');
+            formData.append('video_quality', document.getElementById('videoQuality').value);
+            formData.append('david_normal_weight', sliders.normalWeight.element.value / 100);
+            formData.append('david_blend_strength', sliders.blendStrength.element.value / 100);
+            formData.append('david_depth_contribution', 0.15); // Fixed for now
+            formData.append('david_face_focus', sliders.faceFocus.element.value / 100);
             
-            // Add DaviD-specific parameters
-            formData.append('david_normal_weight', document.getElementById('normalWeight').value / 100);
-            formData.append('david_blend_strength', document.getElementById('blendStrength').value / 100);
-            formData.append('david_depth_contribution', document.getElementById('depthContrib').value / 100);
-            formData.append('david_face_focus', document.getElementById('faceFocus').value / 100);
-            
-            // Calculate and show time estimate
-            const fileSizeMB = selectedFile.size / (1024 * 1024);
-            const estimatedMinutes = Math.max(1, Math.round(fileSizeMB * 1.2)); // More accurate: 1.2 min per MB for DaviD
-            const processingMode = document.getElementById('processingMode').value;
-            
-            let modeDescription = "";
-            if (processingMode === 'david') {
-                modeDescription = "🎨 DaviD Thermal 3D";
-            } else if (processingMode === '3d_normal') {
-                modeDescription = "🎯 3D Surface Normal";
-            } else {
-                modeDescription = "🌈 Holographic";
-            }
-            
-            document.getElementById('progressText').innerHTML = `
-                Processing ${modeDescription} effect...<br>
-                <small>Estimated time: ~${estimatedMinutes} minute${estimatedMinutes > 1 ? 's' : ''} 
-                (${fileSizeMB.toFixed(1)} MB video)</small>
-            `;
-            
-            document.getElementById('options').style.display = 'none';
-            document.getElementById('progress').style.display = 'block';
-            
-            // Simulate progress (in production, use WebSocket or polling)
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                progress += Math.random() * 10;
-                if (progress > 90) progress = 90;
-                updateProgress(progress);
-            }, 1000);
+            // Hide settings, show progress
+            document.getElementById('settingsSection').style.display = 'none';
+            document.getElementById('progressSection').style.display = 'block';
             
             try {
                 const response = await fetch('/upload', {
@@ -303,102 +856,208 @@
                 });
                 
                 const data = await response.json();
-                clearInterval(progressInterval);
-                updateProgress(100);
                 
-                if (data.status === 'complete') {
-                    showResult(data.output, data.stats);
+                if (data.status === 'processing' && data.video_id) {
+                    currentVideoId = data.video_id;
+                    // Start polling for progress updates
+                    startProgressPolling();
+                } else if (data.error) {
+                    handleError({ error: data.error });
                 }
+                
             } catch (error) {
-                alert('Error processing video: ' + error.message);
-                clearInterval(progressInterval);
+                handleError({ error: error.message });
             }
         }
         
-        function updateProgress(percent) {
+        // Update progress
+        function updateProgress(data) {
+            document.getElementById('currentFrame').textContent = data.current_frame || 0;
+            document.getElementById('totalFrames').textContent = data.total_frames || 0;
+            
+            // Show FPS with proper formatting
+            const fps = data.fps || 0;
+            if (fps > 0) {
+                document.getElementById('fps').textContent = fps.toFixed(2) + ' fps';
+            } else {
+                document.getElementById('fps').textContent = 'Starting...';
+            }
+            
+            // Format elapsed time
+            const elapsed = data.time_elapsed || 0;
+            const elapsedMinutes = Math.floor(elapsed / 60);
+            const elapsedSeconds = Math.floor(elapsed % 60);
+            document.getElementById('elapsed').textContent = `${elapsedMinutes}:${elapsedSeconds.toString().padStart(2, '0')}`;
+            
+            // Use formatted ETA if available
+            if (data.eta_formatted) {
+                document.getElementById('eta').textContent = data.eta_formatted;
+            } else if (data.time_remaining) {
+                const remaining = data.time_remaining;
+                if (remaining > 60) {
+                    document.getElementById('eta').textContent = `${Math.floor(remaining / 60)} min ${Math.floor(remaining % 60)} sec`;
+                } else {
+                    document.getElementById('eta').textContent = `${Math.floor(remaining)} sec`;
+                }
+            } else {
+                document.getElementById('eta').textContent = 'Calculating...';
+            }
+            
+            // Update progress bar
+            const percent = (data.progress || 0) * 100;
             document.getElementById('progressBar').style.width = percent + '%';
             document.getElementById('progressPercent').textContent = Math.round(percent) + '%';
+            
+            // Update message
+            document.getElementById('progressMessage').textContent = data.message || 'Processing...';
         }
         
-        function showResult(filename, stats) {
-            document.getElementById('progress').style.display = 'none';
-            document.getElementById('result').style.display = 'block';
-            
-            // Ensure video loads properly with cache busting
-            const videoElement = document.getElementById('resultVideo');
-            videoElement.src = `/download/${filename}?t=${Date.now()}`;
-            videoElement.load(); // Force reload
-            
-            // Add error handling for video load
-            videoElement.onerror = function() {
-                console.error('Failed to load video:', filename);
-                alert('Error loading video. Please try downloading it instead.');
-            };
-            
-            videoElement.onloadeddata = function() {
-                console.log('Video loaded successfully:', filename);
-            };
-            
-            document.getElementById('downloadBtn').onclick = () => {
-                window.location.href = `/download/${filename}?download=true`;
-            };
-            
-            let statsHtml = `
-                <p>Processed ${stats.frames_processed} frames in ${stats.processing_time.toFixed(1)}s</p>
-                <p>Overall FPS: ${stats.average_fps.toFixed(1)}</p>
-            `;
-            
-            // Show appropriate processing stats
-            if (stats.david_model_type) {
-                statsHtml += `
-                    <p>🎨 DaviD: ${stats.david_model_type} (Thermal 3D Mapping)</p>
-                `;
-                if (stats.david_features) {
-                    statsHtml += `<p>Features: ${stats.david_features.join(', ')}</p>`;
-                }
-            } else if (stats.normal_device) {
-                statsHtml += `
-                    <p>🎯 3D Normals: ${stats.normal_device} (${stats.normal_model_mode || 'surface-normal'})</p>
-                `;
-                if (stats.normal_average_fps) {
-                    statsHtml += `<p>Normal FPS: ${stats.normal_average_fps.toFixed(1)}</p>`;
-                }
-            } else if (stats.depth_device) {
-                statsHtml += `
-                    <p>🌈 Depth: ${stats.depth_device} (${stats.depth_model_mode || 'geometric'})</p>
-                `;
-                if (stats.depth_average_fps) {
-                    statsHtml += `<p>Depth FPS: ${stats.depth_average_fps.toFixed(1)}</p>`;
-                }
+        // Polling for progress updates
+        let progressInterval = null;
+        
+        function startProgressPolling() {
+            // Clear any existing interval
+            if (progressInterval) {
+                clearInterval(progressInterval);
             }
             
-            document.getElementById('stats').innerHTML = statsHtml;
+            // Poll every 2 seconds
+            progressInterval = setInterval(async () => {
+                if (!currentVideoId) {
+                    stopProgressPolling();
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`/progress/${currentVideoId}`);
+                    const data = await response.json();
+                    
+                    if (data.status === 'processing') {
+                        updateProgress(data);
+                    } else if (data.status === 'complete') {
+                        stopProgressPolling();
+                        handleComplete(data);
+                    } else if (data.status === 'error') {
+                        stopProgressPolling();
+                        handleError(data);
+                    }
+                } catch (error) {
+                    console.error('Progress polling error:', error);
+                }
+            }, 2000);
         }
         
+        function stopProgressPolling() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+            }
+        }
+        
+        // Handle completion
+        function handleComplete(data) {
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('resultSection').style.display = 'block';
+            
+            // Load video
+            const video = document.getElementById('resultVideo');
+            video.src = `/download/${data.output}?t=${Date.now()}`;
+            video.load();
+            
+            // Set download button
+            document.getElementById('downloadBtn').onclick = () => {
+                window.location.href = `/download/${data.output}?download=true`;
+            };
+            
+            // Display stats
+            if (data.stats) {
+                displayStats(data.stats);
+            }
+        }
+        
+        // Handle errors
+        function handleError(data) {
+            alert('Error: ' + data.error);
+            // Reset UI
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('settingsSection').style.display = 'block';
+        }
+        
+        // Display stats
+        function displayStats(stats) {
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = '';
+            
+            const statItems = [
+                { label: 'Frames', value: stats.frames_processed },
+                { label: 'Time', value: stats.processing_time.toFixed(1) + 's' },
+                { label: 'Avg FPS', value: stats.average_fps.toFixed(1) },
+                { label: 'Model', value: 'DaviD GPU' }
+            ];
+            
+            statItems.forEach(stat => {
+                const div = document.createElement('div');
+                div.className = 'stat-item';
+                div.innerHTML = `
+                    <div class="stat-value">${stat.value}</div>
+                    <div class="stat-label">${stat.label}</div>
+                `;
+                statsGrid.appendChild(div);
+            });
+        }
+        
+        // Process another video
+        function processAnother() {
+            // Reset everything
+            currentVideoId = null;
+            selectedFile = null;
+            
+            document.getElementById('resultSection').style.display = 'none';
+            document.getElementById('previewSection').style.display = 'none';
+            document.getElementById('uploadSection').style.display = 'block';
+            document.getElementById('settingsSection').style.display = 'none';
+            
+            // Reset upload area
+            document.getElementById('uploadArea').innerHTML = `
+                <div class="upload-icon">🎬</div>
+                <h3>Drop your video here or click to browse</h3>
+                <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+                    Supported formats: MP4, AVI, MOV, MKV (max 500MB)
+                </p>
+                <input type="file" id="fileInput" accept="video/*" style="display: none;">
+                <div class="upload-progress" id="uploadProgress"></div>
+            `;
+            
+            // Re-attach file input
+            document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+        }
+        
+        // Generate preview
         async function generatePreview() {
             if (!selectedFile) return;
             
+            // Show preview section with loading state
+            document.getElementById('previewSection').style.display = 'block';
+            document.getElementById('previewLoading').style.display = 'block';
+            document.getElementById('previewResult').style.display = 'none';
+            
+            // Scroll to preview section
+            document.getElementById('previewSection').scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'nearest' 
+            });
+            
             const formData = new FormData();
             formData.append('video', selectedFile);
-            formData.append('processing_mode', document.getElementById('processingMode').value);
+            formData.append('processing_mode', 'david');
+            formData.append('david_normal_weight', sliders.normalWeight.element.value / 100);
+            formData.append('david_blend_strength', sliders.blendStrength.element.value / 100);
+            formData.append('david_depth_contribution', 0.15);
+            formData.append('david_face_focus', sliders.faceFocus.element.value / 100);
             
-            // Add DaviD-specific parameters for preview
-            formData.append('david_normal_weight', document.getElementById('normalWeight').value / 100);
-            formData.append('david_blend_strength', document.getElementById('blendStrength').value / 100);
-            formData.append('david_depth_contribution', document.getElementById('depthContrib').value / 100);
-            formData.append('david_face_focus', document.getElementById('faceFocus').value / 100);
-            
-            document.getElementById('options').style.display = 'none';
-            document.getElementById('progress').style.display = 'block';
-            document.getElementById('progressText').innerHTML = '🎭 Generating preview...<br><small>Analyzing frames for best quality preview</small>';
-            
-            // Simple progress for preview (faster than full processing)
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                progress += Math.random() * 20;
-                if (progress > 90) progress = 90;
-                updateProgress(progress);
-            }, 200);
+            // Add frame position
+            const framePosition = document.getElementById('framePosition').value / 100;
+            formData.append('frame_position', framePosition);
             
             try {
                 const response = await fetch('/preview', {
@@ -407,41 +1066,137 @@
                 });
                 
                 const data = await response.json();
-                clearInterval(progressInterval);
-                updateProgress(100);
                 
-                if (data.status === 'success') {
-                    showPreview(data.preview);
-                } else {
+                if (data.status === 'success' && data.preview) {
+                    // Show preview image
+                    document.getElementById('previewLoading').style.display = 'none';
+                    document.getElementById('previewResult').style.display = 'block';
+                    
+                    const previewImg = document.getElementById('previewImage');
+                    currentPreviewUrl = `/download/${data.preview}`;
+                    previewImg.src = `${currentPreviewUrl}?t=${Date.now()}`;
+                    previewImg.onload = () => {
+                        // Image loaded successfully
+                        console.log('Preview loaded successfully');
+                    };
+                } else if (data.error) {
+                    document.getElementById('previewLoading').style.display = 'none';
                     alert('Preview generation failed: ' + data.error);
-                    document.getElementById('progress').style.display = 'none';
-                    document.getElementById('options').style.display = 'block';
+                    document.getElementById('previewSection').style.display = 'none';
                 }
+                
             } catch (error) {
+                document.getElementById('previewLoading').style.display = 'none';
                 alert('Error generating preview: ' + error.message);
-                clearInterval(progressInterval);
-                document.getElementById('progress').style.display = 'none';
-                document.getElementById('options').style.display = 'block';
+                document.getElementById('previewSection').style.display = 'none';
             }
         }
         
-        function showPreview(filename) {
-            document.getElementById('progress').style.display = 'none';
-            document.getElementById('preview').style.display = 'block';
+        // Save settings
+        function saveSettings() {
+            const settings = {
+                normalWeight: sliders.normalWeight.element.value,
+                blendStrength: sliders.blendStrength.element.value,
+                faceFocus: sliders.faceFocus.element.value,
+                videoQuality: document.getElementById('videoQuality').value
+            };
             
-            document.getElementById('previewImage').src = `/download/${filename}`;
-            document.getElementById('previewStats').innerHTML = `
-                <p>📸 Preview shows frame-by-frame mask adaptation and thermal effect quality</p>
-                <p>🎯 Face Focus: ${document.getElementById('faceFocus').value}% | 
-                   🌈 Thermal Effect: ${document.getElementById('normalWeight').value}% | 
-                   💪 Intensity: ${document.getElementById('blendStrength').value}%</p>
-            `;
+            localStorage.setItem('davidSettings', JSON.stringify(settings));
+            
+            // Show confirmation
+            const btn = event.target;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '✅ Saved!';
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+            }, 2000);
         }
         
-        function hidePreview() {
-            document.getElementById('preview').style.display = 'none';
-            document.getElementById('options').style.display = 'block';
+        // Load saved settings on startup
+        function loadSavedSettings() {
+            const saved = localStorage.getItem('davidSettings');
+            if (saved) {
+                const settings = JSON.parse(saved);
+                
+                sliders.normalWeight.element.value = settings.normalWeight;
+                sliders.normalWeight.value.textContent = settings.normalWeight + '%';
+                
+                sliders.blendStrength.element.value = settings.blendStrength;
+                sliders.blendStrength.value.textContent = settings.blendStrength + '%';
+                
+                sliders.faceFocus.element.value = settings.faceFocus;
+                sliders.faceFocus.value.textContent = settings.faceFocus + '%';
+                
+                document.getElementById('videoQuality').value = settings.videoQuality;
+                
+                updateSliderPreviews();
+            }
         }
+        
+        // Get video duration and frame info
+        function getVideoDuration(file) {
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            
+            video.onloadedmetadata = function() {
+                videoDuration = video.duration;
+                // Assume 24 fps as default
+                totalFrames = Math.floor(videoDuration * 24);
+                updateFrameInfo();
+                window.URL.revokeObjectURL(video.src);
+            };
+            
+            video.src = URL.createObjectURL(file);
+        }
+        
+        // Update frame info based on slider position
+        function updateFrameInfo() {
+            const position = document.getElementById('framePosition').value / 100;
+            const frameNumber = Math.floor(totalFrames * position);
+            const timeSeconds = (videoDuration * position).toFixed(2);
+            
+            document.getElementById('frameInfo').textContent = 
+                `Frame ~${frameNumber} of ${totalFrames} (${timeSeconds}s)`;
+        }
+        
+        // Frame position slider handler
+        document.addEventListener('DOMContentLoaded', () => {
+            const frameSlider = document.getElementById('framePosition');
+            const frameValue = document.getElementById('framePositionValue');
+            
+            frameSlider.addEventListener('input', (e) => {
+                frameValue.textContent = e.target.value + '%';
+                updateFrameInfo();
+            });
+        });
+        
+        // Download preview
+        function downloadPreview() {
+            if (currentPreviewUrl) {
+                window.location.href = currentPreviewUrl + '?download=true';
+            }
+        }
+        
+        // Regenerate preview with different frame
+        function regeneratePreview() {
+            // Show frame selector
+            document.getElementById('frameSelectionGroup').scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'nearest' 
+            });
+            
+            // Generate new preview after a moment
+            setTimeout(() => {
+                generatePreview();
+            }, 500);
+        }
+        
+        // Initialize on load
+        window.addEventListener('load', () => {
+            initWebSocket();
+            loadSavedSettings();
+            updateSliderPreviews();
+        });
     </script>
 </body>
 </html>
