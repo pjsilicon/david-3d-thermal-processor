@@ -150,18 +150,21 @@
                        oninput="document.getElementById('depthContribValue').textContent = this.value + '%'">
                 
                 <label>Face Focus (Precision): <span id="faceFocusValue">75%</span></label>
-                <input type="range" id="faceFocus" min="50" max="100" value="75" 
+                <input type="range" id="faceFocus" min="0" max="100" value="75" 
                        oninput="document.getElementById('faceFocusValue').textContent = this.value + '%'">
                 
                 <p style="font-size: 12px; color: #888; margin-top: 10px;">
                     💡 Higher thermal effect = more blue/cyan thermal look<br>
                     💡 Higher intensity = stronger 3D overlay<br>
                     💡 Higher depth = more geometric depth information<br>
-                    💡 Higher face focus = more precise targeting (face + upper body only)
+                    💡 Face focus: 0% = full body, 100% = face only
                 </p>
             </div>
             
-            <button class="btn" onclick="processVideo()">Process Video</button>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button class="btn" onclick="generatePreview()" style="background: #ff6b35;">🎭 Generate Preview</button>
+                <button class="btn" onclick="processVideo()">🎬 Process Full Video</button>
+            </div>
         </div>
         
         <div id="progress" style="display: none;">
@@ -172,6 +175,17 @@
             <div style="text-align: center; margin-top: 10px;">
                 <span id="progressPercent">0%</span>
             </div>
+        </div>
+        
+        <div id="preview" style="display: none;" class="result">
+            <h3>🎭 Preview Generated</h3>
+            <p style="color: #888; margin-bottom: 15px;">This shows what your full video will look like with the current settings</p>
+            <img id="previewImage" style="max-width: 100%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <div style="margin-top: 15px;">
+                <button class="btn" onclick="processVideo()" style="background: #00a8ff;">✅ Looks Good - Process Full Video</button>
+                <button class="btn" onclick="hidePreview()" style="background: #666;">🔄 Adjust Settings</button>
+            </div>
+            <div id="previewStats" style="margin-top: 10px; font-size: 12px; color: #888;"></div>
         </div>
         
         <div id="result" style="display: none;" class="result">
@@ -345,6 +359,74 @@
             }
             
             document.getElementById('stats').innerHTML = statsHtml;
+        }
+        
+        async function generatePreview() {
+            if (!selectedFile) return;
+            
+            const formData = new FormData();
+            formData.append('video', selectedFile);
+            formData.append('processing_mode', document.getElementById('processingMode').value);
+            
+            // Add DaviD-specific parameters for preview
+            formData.append('david_normal_weight', document.getElementById('normalWeight').value / 100);
+            formData.append('david_blend_strength', document.getElementById('blendStrength').value / 100);
+            formData.append('david_depth_contribution', document.getElementById('depthContrib').value / 100);
+            formData.append('david_face_focus', document.getElementById('faceFocus').value / 100);
+            
+            document.getElementById('options').style.display = 'none';
+            document.getElementById('progress').style.display = 'block';
+            document.getElementById('progressText').innerHTML = '🎭 Generating preview...<br><small>Analyzing frames for best quality preview</small>';
+            
+            // Simple progress for preview (faster than full processing)
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 20;
+                if (progress > 90) progress = 90;
+                updateProgress(progress);
+            }, 200);
+            
+            try {
+                const response = await fetch('/preview', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                clearInterval(progressInterval);
+                updateProgress(100);
+                
+                if (data.status === 'success') {
+                    showPreview(data.preview);
+                } else {
+                    alert('Preview generation failed: ' + data.error);
+                    document.getElementById('progress').style.display = 'none';
+                    document.getElementById('options').style.display = 'block';
+                }
+            } catch (error) {
+                alert('Error generating preview: ' + error.message);
+                clearInterval(progressInterval);
+                document.getElementById('progress').style.display = 'none';
+                document.getElementById('options').style.display = 'block';
+            }
+        }
+        
+        function showPreview(filename) {
+            document.getElementById('progress').style.display = 'none';
+            document.getElementById('preview').style.display = 'block';
+            
+            document.getElementById('previewImage').src = `/download/${filename}`;
+            document.getElementById('previewStats').innerHTML = `
+                <p>📸 Preview shows frame-by-frame mask adaptation and thermal effect quality</p>
+                <p>🎯 Face Focus: ${document.getElementById('faceFocus').value}% | 
+                   🌈 Thermal Effect: ${document.getElementById('normalWeight').value}% | 
+                   💪 Intensity: ${document.getElementById('blendStrength').value}%</p>
+            `;
+        }
+        
+        function hidePreview() {
+            document.getElementById('preview').style.display = 'none';
+            document.getElementById('options').style.display = 'block';
         }
     </script>
 </body>

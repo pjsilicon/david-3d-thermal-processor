@@ -47,7 +47,8 @@ class HolographicOverlayProcessor:
             normal_weight = config.get('david_normal_weight', 0.85)
             blend_strength = config.get('david_blend_strength', 0.9) 
             depth_contribution = config.get('david_depth_contribution', 0.15)
-            self.david_processor.configure_effect(normal_weight, blend_strength, depth_contribution)
+            face_focus = config.get('david_face_focus', 0.75)
+            self.david_processor.configure_effect(normal_weight, blend_strength, depth_contribution, face_focus)
             
             self.use_surface_normals = False  # DaviD handles its own processing
             self.use_david = True

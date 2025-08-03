@@ -25,6 +25,7 @@ class DaviDProcessor:
         self.normal_weight = 0.85      # How much surface normal (blue/cyan thermal) effect
         self.blend_strength = 0.9      # Overall effect intensity
         self.depth_contribution = 0.15 # How much depth info to blend in
+        self.face_focus = 0.75         # How tightly to focus on face vs upper body (0=full body, 1=face only)
         
         # Performance tracking
         self.processing_times = []
@@ -32,7 +33,7 @@ class DaviDProcessor:
         
         print("✅ DaviD processor ready!")
     
-    def configure_effect(self, normal_weight=None, blend_strength=None, depth_contribution=None):
+    def configure_effect(self, normal_weight=None, blend_strength=None, depth_contribution=None, face_focus=None):
         """
         Configure the 3D effect parameters.
         
@@ -40,6 +41,7 @@ class DaviDProcessor:
             normal_weight: 0.0-1.0, how much surface normal effect (blue/cyan thermal look)
             blend_strength: 0.0-1.0, overall effect intensity
             depth_contribution: 0.0-1.0, how much depth information to include
+            face_focus: 0.0-1.0, how tightly to focus on face vs upper body
         """
         if normal_weight is not None:
             self.normal_weight = max(0.0, min(1.0, normal_weight))
@@ -47,8 +49,10 @@ class DaviDProcessor:
             self.blend_strength = max(0.0, min(1.0, blend_strength))
         if depth_contribution is not None:
             self.depth_contribution = max(0.0, min(1.0, depth_contribution))
+        if face_focus is not None:
+            self.face_focus = max(0.0, min(1.0, face_focus))
             
-        print(f"🎨 DaviD effect configured: normal={self.normal_weight:.2f}, intensity={self.blend_strength:.2f}, depth={self.depth_contribution:.2f}")
+        print(f"🎨 DaviD effect configured: normal={self.normal_weight:.2f}, intensity={self.blend_strength:.2f}, depth={self.depth_contribution:.2f}, focus={self.face_focus:.2f}")
 
     def process_frame(self, frame, mask=None):
         """
@@ -88,17 +92,39 @@ class DaviDProcessor:
                 depth_weight = self.depth_contribution
                 combined_vis = cv2.addWeighted(normal_vis, normal_weight, depth_vis, depth_weight, 0)
                 
-                # Apply the 3D effect using our precise face tracking mask for focused targeting
-                if mask is not None:
-                    # Use the precise face tracking mask - this ensures effect only on face/upper body
+                # Smart mask selection: prioritize DaviD's high-quality foreground segmentation
+                if foreground_mask is not None:
+                    # Start with DaviD's accurate foreground segmentation
+                    face_mask = foreground_mask.copy()
+                    
+                    # If we have face tracking and high face_focus, refine the mask
+                    if mask is not None and self.face_focus > 0.3:
+                        # Convert masks to float for blending
+                        if mask.dtype == np.uint8:
+                            face_tracking_mask = mask.astype(np.float32) / 255.0
+                        else:
+                            face_tracking_mask = mask.astype(np.float32)
+                            
+                        if face_mask.dtype == np.uint8:
+                            david_mask = face_mask.astype(np.float32) / 255.0
+                        else:
+                            david_mask = face_mask.astype(np.float32)
+                        
+                        # Combine masks: use face tracking to focus DaviD's mask on face region
+                        # Higher face_focus = more restricted to face area only
+                        combined_mask = david_mask * (face_tracking_mask * self.face_focus + (1 - self.face_focus))
+                        face_mask = (combined_mask * 255).astype(np.uint8)
+                        
+                        print(f"🎯 Using DaviD foreground + face tracking (focus={self.face_focus:.2f})")
+                    else:
+                        print(f"✨ Using DaviD's high-quality foreground segmentation")
+                        
+                elif mask is not None:
+                    # Fallback to face tracking mask if DaviD segmentation unavailable
                     face_mask = mask
-                    print(f"🎯 Using face tracking mask for precise targeting")
-                elif foreground_mask is not None:
-                    # Fallback to DaviD's foreground mask, but make it more conservative
-                    face_mask = foreground_mask
-                    print(f"⚠️ Using DaviD foreground mask as fallback")
+                    print(f"⚠️ DaviD foreground unavailable, using face tracking mask")
                 else:
-                    # No mask available - apply to entire frame (not ideal)
+                    # Last resort - apply to entire frame
                     face_mask = np.ones((frame.shape[0], frame.shape[1]), dtype=np.uint8) * 255
                     print(f"❌ No mask available - applying to entire frame")
                 
