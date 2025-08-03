@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 import os
+import json
 import uuid
 from processor.main_pipeline import HolographicOverlayProcessor
 
@@ -46,20 +47,40 @@ def upload_video():
         # Process video (in production, use Celery for async)
         output_filename = f"{video_id}_hologram.mp4"
         output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        progress_file = os.path.join(app.config['OUTPUT_FOLDER'], f"{video_id}_progress.json")
         
         processor = HolographicOverlayProcessor(options)
-        stats = processor.process_video(input_path, output_path)
+        stats = processor.process_video(input_path, output_path, progress_file=progress_file)
         
         # Cleanup
         os.remove(input_path)
         
+        # Clean up progress file
+        if os.path.exists(progress_file):
+            os.remove(progress_file)
+            
         return jsonify({
             'status': 'complete',
             'output': output_filename,
-            'stats': stats
+            'stats': stats,
+            'video_id': video_id
         })
     
     return jsonify({'error': 'Invalid file'}), 400
+
+@app.route('/progress/<video_id>')
+def get_progress(video_id):
+    progress_file = os.path.join(app.config['OUTPUT_FOLDER'], f"{video_id}_progress.json")
+    
+    if os.path.exists(progress_file):
+        try:
+            with open(progress_file, 'r') as f:
+                progress_data = json.loads(f.read())
+                return jsonify(progress_data)
+        except:
+            return jsonify({'error': 'Failed to read progress'}), 500
+    else:
+        return jsonify({'error': 'Progress not found'}), 404
 
 @app.route('/preview', methods=['POST'])
 def preview_video():
@@ -113,10 +134,36 @@ def preview_video():
 
 @app.route('/download/<filename>')
 def download_file(filename):
-    return send_file(
-        os.path.join(app.config['OUTPUT_FOLDER'], filename),
-        as_attachment=True
-    )
+    file_path = os.path.join(app.config['OUTPUT_FOLDER'], filename)
+    
+    # Check if file exists
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+    
+    # Determine if this is a download or stream request
+    as_attachment = request.args.get('download', 'false').lower() == 'true'
+    
+    # For video streaming, use appropriate mimetype
+    if filename.endswith('.mp4'):
+        return send_file(
+            file_path,
+            mimetype='video/mp4',
+            as_attachment=as_attachment,
+            download_name=filename if as_attachment else None
+        )
+    elif filename.endswith(('.jpg', '.jpeg')):
+        return send_file(
+            file_path,
+            mimetype='image/jpeg',
+            as_attachment=as_attachment,
+            download_name=filename if as_attachment else None
+        )
+    else:
+        return send_file(
+            file_path,
+            as_attachment=as_attachment,
+            download_name=filename if as_attachment else None
+        )
 
 if __name__ == '__main__':
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)

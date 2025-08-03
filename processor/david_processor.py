@@ -92,37 +92,41 @@ class DaviDProcessor:
                 depth_weight = self.depth_contribution
                 combined_vis = cv2.addWeighted(normal_vis, normal_weight, depth_vis, depth_weight, 0)
                 
-                # Smart mask selection: prioritize DaviD's high-quality foreground segmentation
+                # Trust DaviD's high-quality foreground segmentation completely
                 if foreground_mask is not None:
-                    # Start with DaviD's accurate foreground segmentation
+                    # Use DaviD's mask directly - it's trained on humans and works great!
                     face_mask = foreground_mask.copy()
                     
-                    # If we have face tracking and high face_focus, refine the mask
-                    if mask is not None and self.face_focus > 0.3:
-                        # Convert masks to float for blending
-                        if mask.dtype == np.uint8:
-                            face_tracking_mask = mask.astype(np.float32) / 255.0
-                        else:
-                            face_tracking_mask = mask.astype(np.float32)
-                            
+                    # Optional: Apply face_focus as mask boundary adjustment (not blending)
+                    if self.face_focus < 0.9:  # Only modify if user wants looser boundaries
+                        # Convert to float for morphological operations
                         if face_mask.dtype == np.uint8:
-                            david_mask = face_mask.astype(np.float32) / 255.0
+                            mask_float = face_mask.astype(np.float32) / 255.0
                         else:
-                            david_mask = face_mask.astype(np.float32)
+                            mask_float = face_mask.astype(np.float32)
                         
-                        # Combine masks: use face tracking to focus DaviD's mask on face region
-                        # Higher face_focus = more restricted to face area only
-                        combined_mask = david_mask * (face_tracking_mask * self.face_focus + (1 - self.face_focus))
-                        face_mask = (combined_mask * 255).astype(np.uint8)
+                        # Apply slight erosion for tighter mask at high face_focus values
+                        # or dilation for more generous coverage at low values
+                        if self.face_focus > 0.5:
+                            # Erode slightly for tighter fit
+                            kernel_size = int(3 + (self.face_focus - 0.5) * 4)  # 3-5 pixels
+                            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+                            mask_float = cv2.erode(mask_float, kernel, iterations=1)
+                        else:
+                            # Dilate slightly for more coverage
+                            kernel_size = int(3 + (0.5 - self.face_focus) * 4)  # 3-5 pixels
+                            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+                            mask_float = cv2.dilate(mask_float, kernel, iterations=1)
                         
-                        print(f"🎯 Using DaviD foreground + face tracking (focus={self.face_focus:.2f})")
+                        face_mask = (mask_float * 255).astype(np.uint8)
+                        print(f"✨ Using DaviD segmentation with boundary adjustment (focus={self.face_focus:.2f})")
                     else:
-                        print(f"✨ Using DaviD's high-quality foreground segmentation")
+                        print(f"✨ Using DaviD's high-quality foreground segmentation directly")
                         
                 elif mask is not None:
                     # Fallback to face tracking mask if DaviD segmentation unavailable
                     face_mask = mask
-                    print(f"⚠️ DaviD foreground unavailable, using face tracking mask")
+                    print(f"⚠️ DaviD foreground unavailable, using face tracking mask as fallback")
                 else:
                     # Last resort - apply to entire frame
                     face_mask = np.ones((frame.shape[0], frame.shape[1]), dtype=np.uint8) * 255

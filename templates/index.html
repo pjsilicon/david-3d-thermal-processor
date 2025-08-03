@@ -157,7 +157,7 @@
                     💡 Higher thermal effect = more blue/cyan thermal look<br>
                     💡 Higher intensity = stronger 3D overlay<br>
                     💡 Higher depth = more geometric depth information<br>
-                    💡 Face focus: 0% = full body, 100% = face only
+                    💡 Face focus: 0% = generous coverage, 50% = default, 100% = tighter fit
                 </p>
             </div>
             
@@ -220,7 +220,7 @@
             if (e.target.files.length > 0) {
                 selectedFile = e.target.files[0];
                 const fileSizeMB = (selectedFile.size / 1024 / 1024);
-                const estimatedTime = Math.max(1, Math.round(fileSizeMB * 0.5));
+                const estimatedTime = Math.max(1, Math.round(fileSizeMB * 1.2)); // More accurate: 1.2 min/MB for DaviD
                 
                 document.getElementById('uploadArea').innerHTML = `
                     <p style="font-size: 24px;">✅</p>
@@ -267,7 +267,7 @@
             
             // Calculate and show time estimate
             const fileSizeMB = selectedFile.size / (1024 * 1024);
-            const estimatedMinutes = Math.max(1, Math.round(fileSizeMB * 0.5)); // Rough estimate: 0.5 min per MB
+            const estimatedMinutes = Math.max(1, Math.round(fileSizeMB * 1.2)); // More accurate: 1.2 min per MB for DaviD
             const processingMode = document.getElementById('processingMode').value;
             
             let modeDescription = "";
@@ -324,9 +324,23 @@
             document.getElementById('progress').style.display = 'none';
             document.getElementById('result').style.display = 'block';
             
-            document.getElementById('resultVideo').src = `/download/${filename}`;
+            // Ensure video loads properly with cache busting
+            const videoElement = document.getElementById('resultVideo');
+            videoElement.src = `/download/${filename}?t=${Date.now()}`;
+            videoElement.load(); // Force reload
+            
+            // Add error handling for video load
+            videoElement.onerror = function() {
+                console.error('Failed to load video:', filename);
+                alert('Error loading video. Please try downloading it instead.');
+            };
+            
+            videoElement.onloadeddata = function() {
+                console.log('Video loaded successfully:', filename);
+            };
+            
             document.getElementById('downloadBtn').onclick = () => {
-                window.location.href = `/download/${filename}`;
+                window.location.href = `/download/${filename}?download=true`;
             };
             
             let statsHtml = `

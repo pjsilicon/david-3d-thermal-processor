@@ -1,5 +1,6 @@
 import os
 import time
+import json
 from typing import Optional
 import numpy as np
 from tqdm import tqdm
@@ -80,7 +81,8 @@ class HolographicOverlayProcessor:
         self,
         input_path: str,
         output_path: str,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        progress_file: Optional[str] = None
     ) -> dict:
         """Main processing pipeline"""
         start_time = time.time()
@@ -197,9 +199,25 @@ class HolographicOverlayProcessor:
                 
                 # Update progress
                 pbar.update(1)
+                current_progress = (frame_idx + 1) / video.total_frames
+                
+                # Write to progress file if provided
+                if progress_file and frame_idx % 10 == 0:  # Update every 10 frames
+                    try:
+                        with open(progress_file, 'w') as f:
+                            progress_data = {
+                                'progress': current_progress,
+                                'current_frame': frame_idx + 1,
+                                'total_frames': video.total_frames,
+                                'fps': stats['frames_processed'] / (time.time() - start_time) if stats['frames_processed'] > 0 else 0,
+                                'eta_seconds': int((video.total_frames - frame_idx - 1) / max(0.1, stats['frames_processed'] / (time.time() - start_time))) if stats['frames_processed'] > 0 else 0
+                            }
+                            f.write(json.dumps(progress_data))
+                    except Exception as e:
+                        print(f"Failed to write progress: {e}")
+                
                 if progress_callback:
-                    progress = (frame_idx + 1) / video.total_frames
-                    progress_callback(progress)
+                    progress_callback(current_progress)
         
         # Cleanup
         video.cap.release()
